@@ -1,5 +1,9 @@
 .openai/
+.sites-runtime/
 node_modules/
+dist/
+coverage/
+*.tsbuildinfo
 .env
 .env.*
 .DS_Store

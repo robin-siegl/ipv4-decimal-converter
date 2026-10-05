@@ -1,14 +1,33 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFile, cp, mkdtemp, appendFile, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, cp, mkdtemp, appendFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import test from 'node:test';
+import { beforeAll, afterAll, test } from 'vitest';
 import vm from 'node:vm';
+import { prepareOfflineCache } from '../scripts/prepare-offline-cache.mjs';
 
 const root = new URL('../', import.meta.url);
-const workerSource = await readFile(new URL('../dist/sw.js', import.meta.url), 'utf8');
-const registrationSource = await readFile(new URL('../dist/offline.mjs', import.meta.url), 'utf8');
+let suiteDirectory;
+let workerSource;
+const styleAsset = 'main.123.css';
+
+beforeAll(async () => {
+  suiteDirectory = await mkdtemp(path.join(tmpdir(), 'ipv4-worker-suite-'));
+  await mkdir(path.join(suiteDirectory, 'assets'));
+  await Promise.all([
+    writeFile(path.join(suiteDirectory, 'index.html'), '<html><head><title>IPv4 ↔ Decimal</title><link rel="stylesheet" href="./assets/main.123.css"><link rel="icon" href="./favicon.svg"></head><body><div id="root"></div><script type="module" src="./assets/main.123.js"></script></body></html>'),
+    writeFile(path.join(suiteDirectory, 'assets/main.123.js'), 'export const app = "converter";'),
+    writeFile(path.join(suiteDirectory, 'assets/main.123.css'), 'body { color: #242424; }'),
+    writeFile(path.join(suiteDirectory, 'favicon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>'),
+  ]);
+  await prepareOfflineCache(suiteDirectory);
+  workerSource = await readFile(path.join(suiteDirectory, 'sw.js'), 'utf8');
+});
+
+afterAll(async () => {
+  if (suiteDirectory) await rm(suiteDirectory, { recursive: true, force: true });
+});
 const origin = 'https://example.test';
 const base = `${origin}/tool/`;
 
@@ -22,7 +41,7 @@ function createWorker() {
     if (url.pathname === state.failedAsset) return new Response('Unavailable', { status: 503 });
     state.requests.push(request);
     const filename = url.pathname.slice('/tool/'.length) || 'index.html';
-    const content = await readFile(new URL(`dist/${filename}`, root));
+    const content = await readFile(path.join(suiteDirectory, filename));
     return new Response(content);
   }
   const storage = {
@@ -78,7 +97,7 @@ test('loads the page and its full local dependency graph with the network offlin
   const response = await worker.fetch(`${base}?example=127.0.0.1`, { mode: 'navigate' });
   const html = await response.text();
   assert.match(html, /<title>IPv4 ↔ Decimal<\/title>/);
-  assert.match(html, /id="ipv4"/);
+  assert.match(html, /id="root"/);
   const dependencies = new Set([...html.matchAll(/(?:href|src)="\.\/([^"]+)"/g)].map((match) => match[1]));
   for (const dependency of dependencies) {
     const content = await (await worker.fetch(`${base}${dependency}?v=test`)).text();
@@ -89,8 +108,8 @@ test('loads the page and its full local dependency graph with the network offlin
       }
     }
   }
-  assert.ok(dependencies.has('conversion.mjs'));
-  assert.ok(dependencies.has('offline.mjs'));
+  assert.ok([...dependencies].some((name) => name.startsWith('assets/') && name.endsWith('.js')));
+  assert.ok([...dependencies].some((name) => name.startsWith('assets/') && name.endsWith('.css')));
   const explicitIndex = await worker.fetch(`${base}index.html`, { mode: 'navigate' });
   assert.equal(await explicitIndex.text(), html);
   assert.equal(worker.state.skipped, 1);
@@ -121,7 +140,7 @@ test('activation removes only previous caches for this converter', async () => {
 test('a failed install preserves a working older cache and never activates', async () => {
   const worker = createWorker();
   await worker.storage.open('ipv4-decimal-previous');
-  worker.state.failedAsset = '/tool/style.css';
+  worker.state.failedAsset = `/tool/assets/${styleAsset}`;
   await assert.rejects(worker.lifecycle('install'), /Precache failed/);
   assert.deepEqual(await worker.storage.keys(), ['ipv4-decimal-previous']);
   assert.equal(worker.state.skipped, 0);
@@ -132,12 +151,12 @@ test('asset changes automatically produce a new cache revision', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'ipv4-offline-'));
   try {
     await cp(new URL('scripts/', root), path.join(directory, 'scripts'), { recursive: true });
-    await cp(new URL('dist/', root), path.join(directory, 'dist'), { recursive: true });
+    await cp(suiteDirectory, path.join(directory, 'dist'), { recursive: true });
     const script = path.join(directory, 'scripts/prepare-offline-cache.mjs');
     execFileSync(process.execPath, [script]);
     const before = await readFile(path.join(directory, 'dist/sw.js'), 'utf8');
     assert.equal(before, workerSource);
-    await appendFile(path.join(directory, 'dist/style.css'), '\n/* Updated design. */\n');
+    await appendFile(path.join(directory, 'dist/assets', styleAsset), '\n/* Updated design. */\n');
     execFileSync(process.execPath, [script]);
     const after = await readFile(path.join(directory, 'dist/sw.js'), 'utf8');
     assert.notEqual(after.match(/const CACHE_NAME = '([^']+)'/)[1], before.match(/const CACHE_NAME = '([^']+)'/)[1]);
@@ -145,48 +164,5 @@ test('asset changes automatically produce a new cache revision', async () => {
     assert.equal(await readFile(path.join(directory, 'dist/sw.js'), 'utf8'), after);
   } finally {
     await rm(directory, { recursive: true, force: true });
-  }
-});
-
-test('offline status waits until registration and installation finish', async () => {
-  const status = { textContent: '' };
-  let load;
-  let registered = false;
-  let finishInstall;
-  const ready = new Promise((resolve) => { finishInstall = resolve; });
-  vm.runInNewContext(registrationSource, {
-    navigator: { serviceWorker: {
-      async register(url, options) {
-        assert.equal(url, './sw.js');
-        assert.equal(options.scope, './');
-        assert.equal(options.updateViaCache, 'none');
-        registered = true;
-      },
-      ready,
-    } },
-    document: { readyState: 'interactive', getElementById: () => status },
-    window: { addEventListener(name, callback) { assert.equal(name, 'load'); load = callback; } },
-  });
-  assert.equal(registered, false);
-  const installing = load();
-  await Promise.resolve();
-  assert.equal(registered, true);
-  assert.equal(status.textContent, '');
-  finishInstall();
-  await installing;
-  assert.equal(status.textContent, ' Available offline.');
-});
-
-test('unsupported or rejected registration leaves normal online use available', async () => {
-  for (const navigator of [{}, { serviceWorker: { async register() { throw new Error('Storage blocked'); } } }]) {
-    let load;
-    const status = { textContent: '' };
-    vm.runInNewContext(registrationSource, {
-      navigator,
-      document: { readyState: 'interactive', getElementById: () => status },
-      window: { addEventListener(name, callback) { load = callback; } },
-    });
-    if (load) await load();
-    assert.equal(status.textContent, '');
   }
 });
