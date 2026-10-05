@@ -4,6 +4,8 @@ A small React tool for converting dotted IPv4 addresses to unsigned decimal inte
 
 The interface uses Tailwind CSS, with teal actions, square corners, and a responsive layout. Conversion happens in the browser. There is no backend, analytics, or external font loading.
 
+Light and dark modes follow your system preference until you choose a mode with the button beside the title. Your choice is saved on this device and works offline. The theme is applied before the app loads to avoid a flash of the wrong background.
+
 ## Development
 
 Use Node.js 24.15+ or 26+. Node.js 22.22.2+ is also supported.

@@ -4,7 +4,10 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { App } from './App';
 
-beforeEach(() => { vi.stubEnv('PROD', false); });
+beforeEach(() => {
+  vi.stubEnv('PROD', false);
+  window.localStorage.clear();
+});
 const ipv4Input = () => screen.getByRole('textbox', { name: 'IPv4 address' });
 const decimalInput = () => screen.getByRole('textbox', { name: 'Decimal integer' });
 const form = () => within(screen.getByRole('form', { name: 'Convert address' }));
@@ -122,4 +125,17 @@ it('shows offline readiness after the worker becomes ready', async () => {
   expect(screen.queryByText('Available offline.')).not.toBeInTheDocument();
   await act(async () => { finishInstall(); });
   expect(screen.getByText('Available offline.')).toBeInTheDocument();
+});
+
+it('switches between light and dark mode without changing the conversion', async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: 'Switch to dark mode' }));
+  expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+  expect(window.localStorage.getItem('ipv4-decimal-theme')).toBe('dark');
+  expect(ipv4Input()).toHaveValue('192.168.1.1');
+  expect(decimalInput()).toHaveValue('3232235777');
+  await user.click(screen.getByRole('button', { name: 'Switch to light mode' }));
+  expect(document.documentElement).toHaveAttribute('data-theme', 'light');
+  expect(window.localStorage.getItem('ipv4-decimal-theme')).toBe('light');
 });

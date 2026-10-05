@@ -2,25 +2,73 @@
 
 @theme {
   --color-page: #f7f7f5;
+  --color-surface: #ffffff;
   --color-ink: #242424;
   --color-muted: #6d6d68;
+  --color-secondary: #565651;
+  --color-detail: #666661;
+  --color-control: #737370;
+  --color-subtle: #8a8a86;
+  --color-faint: #a2a29b;
+  --color-placeholder: #aeaea7;
   --color-line: #deded9;
+  --color-separator: #dfdfd9;
+  --color-field-focus: #90908a;
+  --color-field-invalid: #777770;
+  --color-control-hover: #f0f0ed;
+  --color-example-hover: #eaeae5;
+  --color-disabled: #e8e8e3;
+  --color-disabled-ink: #969691;
+  --color-formula: #edede8;
+  --color-formula-border: #cecec7;
+  --color-formula-ink: #444440;
+  --color-link-decoration: #a6a6a0;
   --color-accent: #087e79;
   --color-accent-hover: #066b66;
+  --color-accent-ink: #087e79;
   --color-accent-soft: #087e790b;
+  --shadow-field-focus: 0 0 0 3px #24242407;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
 @layer base {
   :root { color-scheme: light; }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --color-page: #141616;
+    --color-surface: #1d2020;
+    --color-ink: #eceeea;
+    --color-muted: #a0a7a4;
+    --color-secondary: #c2c7c4;
+    --color-detail: #adb5b0;
+    --color-control: #abb2ad;
+    --color-subtle: #969e99;
+    --color-faint: #7b8580;
+    --color-placeholder: #75817b;
+    --color-line: #363c3a;
+    --color-separator: #3b4240;
+    --color-field-focus: #a1aca6;
+    --color-field-invalid: #939e98;
+    --color-control-hover: #2a302d;
+    --color-example-hover: #2a302d;
+    --color-disabled: #292e2b;
+    --color-disabled-ink: #6e7771;
+    --color-formula: #232825;
+    --color-formula-border: #48524c;
+    --color-formula-ink: #cbd2cc;
+    --color-link-decoration: #79847e;
+    --color-accent-ink: #68cfc6;
+    --color-accent-soft: #68cfc610;
+    --shadow-field-focus: 0 0 0 3px #eceeea0a;
+  }
   body { @apply m-0 min-w-[280px] bg-page font-sans text-ink antialiased; }
   button, input { border-radius: 0; }
   button { -webkit-tap-highlight-color: transparent; }
   button:not(:disabled), summary { cursor: pointer; }
   button:disabled { cursor: default; }
   button:focus-visible, summary:focus-visible, a:focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-accent-ink);
     outline-offset: 4px;
   }
   summary::-webkit-details-marker { display: none; }
